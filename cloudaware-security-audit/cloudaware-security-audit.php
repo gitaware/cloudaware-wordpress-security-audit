@@ -1,0 +1,532 @@
+<?php
+/*
+Plugin Name:  CloudAware Security Audit
+Plugin URI:   https://www.cloudaware.eu
+Description:  Plugin to monitor and audit security aspects of your Wordpress installation
+Version:      1.0.8
+Author:       Jeroen Hermans
+License:      GPLv2
+Text Domain:  cloudaware-security-audit
+*/
+
+defined( 'ABSPATH' ) || die( 'No script kiddies please!' );
+
+function cloudseca_make_data() {
+  global $wpdb;
+
+  //This include is needed to get all updates for plugins in the same way as:
+  //https://wordpress.org/plugins/wpvulnerability/
+	if ( ! function_exists( 'get_plugin_updates' ) ) {
+		require_once ABSPATH . 'wp-admin/includes/update.php';
+	}
+  $plugin_updates = get_plugin_updates();
+  $theme_updates  = get_theme_updates();
+  $core_updates   = (array)get_core_updates()["0"];
+
+  //This include is needed to get all plugins installed on the system in the same way as:
+  //https://wordpress.org/plugins/wpvulnerability/
+	if ( ! function_exists( 'get_plugins' ) ) {
+		require_once ABSPATH . 'wp-admin/includes/plugin.php';
+	}
+	$plugins        = get_plugins();
+	$themes         = wp_get_themes();
+
+  //Global
+  $global_theme_autoupdate  = wp_is_auto_update_enabled_for_type( "theme" );
+  $global_plugin_autoupdate = wp_is_auto_update_enabled_for_type( "plugin" );
+
+  //Per plugin
+  $auto_update_plugins = (array) get_site_option( 'auto_update_plugins', array() );
+  $auto_update_themes  = (array) get_site_option( 'auto_update_themes', array() );
+  $auto_update_core    = array (
+                  'auto_update_core_dev'   => get_site_option( 'auto_update_core_dev',   'enabled' ) === 'enabled',
+                  'auto_update_core_minor' => get_site_option( 'auto_update_core_minor', 'enabled' ) === 'enabled',
+                  'auto_update_core_major' => get_site_option( 'auto_update_core_major', 'unset'   ) === 'enabled',
+                        );
+
+  //Optionally include wpvulnerability in order to get data about vulnerabilities
+  $wpvulnerabilities = array();
+	if ( ! function_exists( 'wpvulnerability_plugin_get_vulnerabilities' ) ) {
+    if (defined('WPVULNERABILITY_PLUGIN_PATH')) {
+	    $file_path = WPVULNERABILITY_PLUGIN_PATH . '/wpvulnerability-plugins.php';
+	    if ( file_exists($file_path) ) {
+    		require_once $file_path;
+      }
+    }
+    $wpvulnerabilities = wpvulnerability_plugin_get_vulnerabilities();
+	}
+
+  $data = array('global_autoupdates' => array('themes' => $global_theme_autoupdate, 'plugins' => $global_plugin_autoupdate),
+                'core'    => $core_updates,
+                'plugins' => $plugins,
+                'themes'  => array(),
+                'url'     => get_option( 'siteurl' ),
+                'time'    => time(),
+                'config'  => array()
+          );
+
+  foreach($data['plugins'] as $name => &$plugindata) {
+    if( in_array($name, $auto_update_plugins) ) {
+      $plugindata['Autoupdate'] = true;
+    } else {
+      $plugindata['Autoupdate'] = false;
+    }
+    $plugindata['Active'] = is_plugin_active($name);
+    if( array_key_exists($name, $wpvulnerabilities) ) {
+      $plugindata['vulnerabilities'] = $wpvulnerabilities[$name]['vulnerabilities'];
+      $plugindata['vulnerable']      = $wpvulnerabilities[$name]['vulnerable'];
+    }
+    $args = array(
+        'slug' => $plugindata['TextDomain'],
+        'fields' => array(
+            'banners'      => false,
+            'contributors' => false,
+            'ratings'      => false,
+            'screenshots'  => false,
+            'sections'     => false,
+            'tags'         => false,
+            'version'      => true,
+            'versions'     => false,
+        )
+    );
+
+    //This include is needed to get information about installed plugins on the system in the same way as:
+    //https://wordpress.org/plugins/wpvulnerability/
+	  if ( ! function_exists( 'plugins_api' ) ) {
+		  require_once ABSPATH . 'wp-admin/includes/plugin-install.php';
+	  }
+    $call_api = plugins_api( 'plugin_information', $args );
+    $plugindata['Active_installs'] = $call_api->active_installs;
+    $plugindata['Added']           = gmdate('Y-m-d', strtotime($call_api->added) );
+    $plugindata['Last_updated']    = gmdate('Y-m-d H:i', strtotime( $call_api->last_updated) );
+    $plugindata['Num_ratings']     = $call_api->num_ratings;
+    $plugindata['Rating']          = $call_api->rating;
+
+    if($name == 'revslider/revslider.php') {
+      $url = 'https://www.sliderrevolution.com/documentation/changelog/';
+      $res = wp_remote_get($url);
+      $html = wp_remote_retrieve_body($res);
+      $dom = new DOMDocument;
+      $dom->loadHTML($html);
+
+      $nodevalue = $dom->getElementById('the_real_post_content')->getElementsByTagName('li')->item(1)->nodeValue;
+      $re = '/([^\s]+)\s\((.*)\)/m';
+      preg_match_all($re, $nodevalue, $matches, PREG_SET_ORDER, 0);
+
+      $plugindata['Version_latest']      = $matches[0][1];
+      $plugindata['Version_latest_date'] = date_parse($matches[0][2]);
+      $plugindata['Version_latest_date'] = $plugindata['Version_latest_date']['year'].'-'.$plugindata['Version_latest_date']['month'].'-'.$plugindata['Version_latest_date']['day'];
+    } else {
+      if( array_key_exists($name, $plugin_updates) ) {
+        $plugindata['Version_latest'] = $plugin_updates[$name]->update->new_version;
+      } else {
+        $plugindata['Version_latest'] = $plugindata['Version'];
+      }
+    }
+  }
+
+  $active_theme = wp_get_theme()->get_stylesheet();
+  foreach($themes as $name => &$themedata) {
+    if( in_array($name, $auto_update_themes) ) {
+      $data['themes'][$name]['Autoupdate'] = true;
+    } else {
+      $data['themes'][$name]['Autoupdate'] = false;
+    }
+    
+    if($active_theme == $name) {
+      $data['themes'][$name]['Active'] = true;
+    } else {
+      $data['themes'][$name]['Active'] = false;
+    }
+
+    $themedetails                     = wp_get_theme($name);
+    $data['themes'][$name]['Update']  = $themedata->update;
+    $data['themes'][$name]['Name']    = $themedetails->get('Name');
+    $data['themes'][$name]['Version'] = $themedetails->get('Version');
+
+    if( array_key_exists($name, $theme_updates) ) {
+      $data['themes'][$name]['Version_latest'] = $theme_updates[$name]->update['new_version'];
+    } else {
+      $data['themes'][$name]['Version_latest'] = $data['themes'][$name]['Version'];
+    }
+  }
+  $data['core']['autoupdate'] = $auto_update_core;
+
+  try {
+    $im = new Imagick();
+    $tmp = $im->getVersion()['versionString'];
+
+    $re = '/ImageMagick\s([^\s]+)\s.+https:\/\/imagemagick\.org/m';
+    preg_match_all($re, $tmp, $matches, PREG_SET_ORDER, 0);
+    $current_version = $matches[0][1];
+
+    $url = 'https://api.github.com/repos/ImageMagick/ImageMagick/releases';
+    $res = wp_remote_get($url, array(
+      'timeout' => 10,
+      'User-Agent' => 'User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:134.0) Gecko/20100101 Firefox/134.0'
+    ));
+    $json = wp_remote_retrieve_body($res);
+
+    $releases = json_decode($json, true);
+    $latest_version = $releases[0]['name'];
+
+    $data['imagemagick']['Version']        = $current_version;
+    $data['imagemagick']['Version_latest'] = $latest_version;
+  } catch(Exception $e) {}
+
+  if( !array_key_exists('curl', $data) ) {
+    $data['curl'] = array();
+  }
+  $data['curl']['Version'] = curl_version()['version'];
+
+  $url  = 'https://api.github.com/repos/curl/curl/releases';
+  $res = wp_remote_get($url, array(
+    'timeout' => 10,
+    'User-Agent' => 'User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:134.0) Gecko/20100101 Firefox/134.0'
+  ));
+  $json = wp_remote_retrieve_body($res);
+
+  $obj  = json_decode($json, true);
+  $data['curl']['Version_latest'] = $obj[0]['name'];
+
+
+  #2FA
+  $data['config']['2fa_enabled'] = false;
+  if (
+    array_key_exists('wordfence/wordfence.php', $data['plugins']) &&
+    function_exists('is_plugin_active') &&
+    is_plugin_active('wordfence/wordfence.php')
+  ) { #Wordfence is installed
+    // Define the roles to check
+    $target_roles = ['administrator', 'contributor', 'editor'];
+
+    // Get all defined roles
+    if (!function_exists('get_editable_roles')) {
+      // needed for get_editable_roles()
+      require_once ABSPATH . 'wp-admin/includes/user.php';
+    }
+    $all_roles = get_editable_roles();
+
+    // Filter roles that exist
+    $existing_roles = array_filter($target_roles, function($role) use ($all_roles) {
+      return array_key_exists($role, $all_roles);
+    });
+
+    if (!empty($existing_roles)) {
+      // Prepare setting keys for those roles
+      $setting_keys = array_map(function($role) {
+        return "required-2fa-role.$role";
+      }, $existing_roles);
+
+      // Try to get cached results
+      $cache_key = 'wordfence_2fa_roles_settings';
+      $settings = wp_cache_get($cache_key, 'wordfence');
+      if ($settings === false) {
+        $placeholders = implode(', ', array_fill(0, count($setting_keys), '%s'));
+        $table_name = $wpdb->prefix . 'wfls_settings';
+
+        // Fetch settings in a single query
+        $query = "SELECT name, value FROM $table_name WHERE name IN ($placeholders)";
+        // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared,WordPress.DB.DirectDatabaseQuery.DirectQuery
+        $results = $wpdb->get_results($wpdb->prepare($query, ...$setting_keys), OBJECT_K);
+        // Cache the results
+        $settings = [];
+        foreach ($results as $row) {
+          $settings[$row->name] = $row->value;
+        }
+
+        wp_cache_set($cache_key, $settings, 'wordfence', 300); // Cache for 5 minutes
+      }
+
+      $all_roles_have_2fa = true;
+      foreach ($existing_roles as $role) {
+        $key = "required-2fa-role.$role";
+        if (!isset($settings[$key]) || intval($settings[$key]) <= 0) {
+          $all_roles_have_2fa = false;
+          break;
+        }
+      }
+
+      if ($all_roles_have_2fa) {
+        $data['config']['2fa_enabled'] = true;
+      }
+    }
+  }
+
+  #Configuration 
+  if ( username_exists( 'admin' ) ) {
+	  $data['config']['admin_user_found'] = true;
+  } else {
+	  $data['config']['admin_user_found'] = false;
+  }
+  if (defined('DISALLOW_FILE_EDIT')) {
+	  $data['config']['disallow_file_edit'] = true;
+  } else {
+	  $data['config']['disallow_file_edit'] = false;
+  }
+  if (defined('WP_DEBUG') && WP_DEBUG) {
+	  $data['config']['debug'] = true;
+  } else {
+	  $data['config']['debug'] = false;
+  }
+  if (defined('WP_DEBUG_LOG') && WP_DEBUG_LOG) {
+	  $data['config']['debug_log'] = true;
+  } else {
+	  $data['config']['debug_log'] = false;
+  }
+  if (defined('WP_DEBUG_DISPLAY') && WP_DEBUG_DISPLAY) {
+	  $data['config']['debug_display'] = true;
+  } else {
+	  $data['config']['debug_display'] = false;
+  }
+  if (defined('SCRIPT_DEBUG') && SCRIPT_DEBUG) {
+	  $data['config']['script_debug'] = true;
+  } else {
+	  $data['config']['script_debug'] = false;
+  }
+
+
+  if (defined('WP_HOME') && strpos(WP_HOME, 'https://') === 0) {
+	  $data['config']['home_https'] = true;
+  } else {
+	  $data['config']['home_https'] = false;
+  }
+  if (defined('WP_SITEURL') && strpos(WP_SITEURL, 'https://') === 0) {
+	  $data['config']['siteurl_https'] = true;
+  } else {
+	  $data['config']['siteurl_https'] = false;
+  }
+  if (defined('FORCE_SSL_ADMIN') && strpos(FORCE_SSL_ADMIN, 'https://') === 0) {
+	  $data['config']['force_ssl_admin'] = true;
+  } else {
+	  $data['config']['force_ssl_admin'] = false;
+  }
+
+  if (defined('AUTOSAVE_INTERVAL')) {
+	  $data['config']['autosave_interval'] = AUTOSAVE_INTERVAL;
+  } else {
+	  $data['config']['autosave_interval'] = null;
+  }
+  if (defined('WP_POST_REVISIONS')) {
+	  $data['config']['post_revisions'] = WP_POST_REVISIONS;
+  } else {
+	  $data['config']['post_revisions'] = null;
+  }
+  if (defined('EMPTY_TRASH_DAYS')) {
+	  $data['config']['empty_trash_days'] = EMPTY_TRASH_DAYS;
+  } else {
+	  $data['config']['empty_trash_days'] = null;
+  }
+  if (defined('WP_MEMORY_LIMIT')) {
+	  $data['config']['memory_limit'] = WP_MEMORY_LIMIT;
+  } else {
+	  $data['config']['memory_limit'] = null;
+  }
+
+
+  $url = rtrim(get_option( 'siteurl' ), "/");
+  $url .= '/xmlrpc.php';
+  $res = wp_remote_get($url, array(
+    'timeout' => 10,
+    'User-Agent' => 'User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:134.0) Gecko/20100101 Firefox/134.0'
+  ));
+  if (wp_remote_retrieve_response_code($res) == 200 ) {
+	  $data['config']['xmlrpc_enabled'] = true;
+  } else {
+	  $data['config']['xmlrpc_enabled'] = false;
+  }
+  $data['config']['table_prefix'] = $wpdb->prefix;
+
+  return $data;
+}
+
+//see wp-admin/update-core.php
+function cloudseca_security_status (WP_REST_Request $request) {
+	#if ( ! function_exists( 'core_auto_updates_settings' ) ) {
+	#	require_once ABSPATH . 'wp-admin/update-core.php';
+	#}
+
+  #if(function_exists('needed_function')){
+  #  needed_function();
+  #}
+
+  #$wp_version     = wp_get_wp_version();
+  #$cur_wp_version = preg_replace( '/-.*$/', '', $wp_version );
+  //$data     = array('name'=>$request->get_param( 'naam' ));
+  $data = cloudseca_make_data();
+  return new WP_REST_Response( $data );
+}
+
+add_action( 'rest_api_init', function () {
+  //register_rest_route( 'cloudaware/v1', '/test/(?P<naam>\d+)', array(
+  register_rest_route( 'cloudaware/v1', '/security_status', array(
+    'methods' => 'GET',
+    'callback' => 'cloudseca_security_status',
+     'permission_callback' => function () {
+      return current_user_can( 'activate_plugins' );
+    }
+  ) );
+} );
+
+
+############################################################################
+####### Admin menu
+####### https://deliciousbrains.com/create-wordpress-plugin-settings-page/
+############################################################################
+
+add_action( 'admin_menu', 'cloudseca_menu' );
+
+function cloudseca_menu() {
+	add_options_page( 'CloudAware', 'CloudAware Security', 'manage_options', 'cloudseca-admin-menu', 'cloudseca_options' );
+}
+
+function cloudseca_options() {
+	if ( !current_user_can( 'manage_options' ) )  {
+		wp_die( 'You do not have sufficient permissions to access this page.' );
+	}
+  echo "<h2>".esc_html("Cloudaware Security Settings")."</h2>\n";
+  echo "<form action=\"".esc_url("options.php")."\" method=\"post\">\n";
+  settings_fields( 'cloudseca_plugin_options' );
+  do_settings_sections( 'cloudseca_plugin' );
+  echo "<input name=\"submit\" class=\"button button-primary\" type=\"submit\" value=\"". esc_attr( 'Save' ). "\" />\n";
+  echo "</form>\n";
+}
+
+function cloudseca_register_settings() {
+    register_setting( 'cloudseca_plugin_options', //settings group name
+                      'cloudseca_plugin_options', //name of option
+                      array(
+                        'sanitize_callback' => 'cloudseca_plugin_options_validate'
+                      )
+                    );
+    add_settings_section( 'callback_url_settings',          //id
+                          'Callback Settings',              //title 
+                          'cloudseca_plugin_section_text',  //text at top of section below title
+                          'cloudseca_plugin'                //page
+                        );
+
+    add_settings_field( 'cloudseca_plugin_setting_callback_url', //id
+                        'Callback URL',                          //title
+                        'cloudseca_plugin_setting_callback_url', //callback
+                        'cloudseca_plugin',                      //page
+                        'callback_url_settings'                  //section
+                      );
+}
+add_action( 'admin_init', 'cloudseca_register_settings' );
+
+
+function cloudseca_plugin_options_validate( $input ) {
+    #var_dump($input);
+    $newinput['callback_url'] = trim( $input['callback_url'] );
+    #if ( ! preg_match( '/^[a-z0-9]{32}$/i', $newinput['api_key'] ) ) {
+    #    $newinput['api_key'] = '';
+    #}
+
+    return $newinput;
+}
+
+function cloudseca_plugin_section_text() {
+    echo '<p>Settings used for CloudAware security</p>';
+}
+
+function cloudseca_plugin_setting_callback_url() {
+    $option = get_option( 'cloudseca_plugin_options' );
+    echo "<input id='cloudseca_plugin_options' name='cloudseca_plugin_options[callback_url]' type='text' value='" .
+           esc_attr( $option['callback_url'] ) . "' />";
+}
+
+//get_option('dbi_example_plugin_options')[api_key]
+
+
+
+
+
+############################################################################
+####### Cron job
+####### https://blazzdev.com/scheduled-tasks-cron-wordpress-plugin-boilerplate/
+############################################################################
+
+#####Initialise
+register_activation_hook( __FILE__, 'cloudseca_activate_plugin' );
+function cloudseca_activate_plugin() { // runs on plugin activation
+	#require_once( ABSPATH . 'wp-admin/includes/user.php' );  //wp_create_user()
+	#require_once( ABSPATH . 'wp-includes/pluggable.php' ); //get_user_by()
+	#require_once( ABSPATH . 'wp-includes/capabilities.php' ); //add_role()
+	#require_once( ABSPATH . 'wp-includes/class-wp-application-passwords.php' );
+
+  if ( get_option( 'cloudseca_plugin_options' )                 === false ||
+       get_option( 'cloudseca_plugin_options' )['callback_url'] === false ||
+       get_option( 'cloudseca_plugin_options' )['callback_url'] ==  ''
+  ) {
+    #add_option( 'cloudseca_plugin_options', array('callback_url' => 'https://app.cloudaware.eu/callbacks') );
+    add_option( 'cloudseca_plugin_options', array('callback_url' => '') );
+  }
+  if ( ! wp_next_scheduled( 'cloudseca_cron_security_check' ) ) {
+    wp_schedule_event( time(), 'daily', 'cloudseca_cron_security_check' ); // cloudseca_cron_security_check is a hook
+  }
+
+  #if ( ! wp_roles()->is_role( 'cloudseca_api' ) ) {
+  #  add_role('cloudseca_api', 'cloudseca_api', array(
+  #    'activate_plugins' => true,
+  #    'list_users' => true,
+  #    'read' => true,
+  #    'switch_themes' => true,
+  #    'view_site_health_checks' => true,
+  #  ));
+  #}
+  #$username = 'cloudaware';
+  #$email    = 'wordpresssecurity@cloudaware.eu';
+	#$password = wp_generate_password(32, true);
+
+  #$user_id = username_exists( $username );
+  #if ( !$user_id && email_exists($email) == false ) {
+  #  $user_id = wp_create_user( $username, $password, $email );
+  #  if( !is_wp_error($user_id) ) {
+  #      $user = get_user_by( 'id', $user_id );
+  #      $user->set_role( 'cloudseca_api' );
+  #  }
+  #}
+  #Future use from configuration page to send an app password to cloudaware as a sort of activation
+  #This will always be with consent of the admin
+  #$app_exists = WP_Application_Passwords::application_name_exists_for_user( $user_id, 'cloudaware' );
+  #if ( ! $app_exists ) {
+	#  $app_pass = WP_Application_Passwords::create_new_application_password( $user_id, array( 'name' => 'cloudaware' ) );
+  #  $res = wp_remote_post(get_option('cloudseca_plugin_options')['callback_url'], array(
+  #      'headers'     => array('Content-Type' => 'application/json; charset=utf-8'),
+  #      'body'        => json_encode(array('app_pass' => $app_pass, 'url' => get_option( 'siteurl' ))),
+  #      'method'      => 'POST',
+  #      'data_format' => 'body',
+  #  ));
+  #}
+};
+
+add_action( 'cloudseca_cron_security_check', 'cloudseca_plugin_cron_daily' );
+function cloudseca_plugin_cron_daily() {
+  #only runs if user explicitly set a callback URL, will never run without user interaction
+  if (get_option('cloudseca_plugin_options')['callback_url'] != '') {
+    $res = wp_remote_post(get_option('cloudseca_plugin_options')['callback_url'], array(
+        'headers'     => array('Content-Type' => 'application/json; charset=utf-8'),
+        'body'        => json_encode(cloudseca_make_data()),
+        'method'      => 'POST',
+        'data_format' => 'body',
+    ));
+  }
+}
+
+
+#Deinitialise
+register_deactivation_hook( __FILE__, 'cloudseca_deactivate_plugin' ); 
+function cloudseca_deactivate_plugin() {
+	#require_once( ABSPATH . 'wp-admin/includes/user.php' );  //wp_delete_user()
+	#require_once( ABSPATH . 'wp-includes/pluggable.php' ); //get_user_by()
+	#require_once( ABSPATH . 'wp-includes/capabilities.php' ); //remove_role()
+
+  $timestamp = wp_next_scheduled( 'cloudseca_cron_security_check' );
+  wp_unschedule_event( $timestamp, 'cloudseca_cron_security_check' );
+
+  delete_option('cloudseca_plugin_options');
+
+  #$user = get_user_by( 'login', 'cloudaware' );
+	#wp_delete_user( $user->ID );
+  #remove_role( 'cloudseca_api' );
+}
