@@ -23,6 +23,8 @@ REST API endpoints. Using these endpoints it is possible to:
 - see a list of vulnerabilities for these plugins
 - see what themes are installed
 - check if 2FA is enabled
+- see MD5 hashes of all theme and plugin folders
+
 For installations where the RESTAPI is disabled, the plugin can also push this information to an endpoint.
 This will work for installations that are behind a geoblock or have no RESTAPI. To disable this, remove the
 cronjob.
