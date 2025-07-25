@@ -4,7 +4,7 @@ Contributors: cloudaware
 Tags: security, audit
 Requires at least: 6.0
 Tested up to: 6.8
-Stable tag: 1.0.8
+Stable tag: 1.0.9
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -66,6 +66,10 @@ Apart from the usual headers (ip-address, UserAgent) used in a GET request no ot
 Specifically no version information is transmitted to external services.  
 
 == Changelog ==
+
+= v1.0.9 =
+* Code cleanup
+* Add hashing of theme and plugin folders
 
 = v1.0.8 =
 * Added check if 2FA is enabled through Wordfence plugin
