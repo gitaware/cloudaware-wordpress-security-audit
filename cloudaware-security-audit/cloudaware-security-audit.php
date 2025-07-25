@@ -66,7 +66,9 @@ function cloudseca_make_data() {
                 'themes'  => array(),
                 'url'     => get_option( 'siteurl' ),
                 'time'    => time(),
-                'config'  => cloudseca_get_config()
+                'config'  => cloudseca_get_config(),
+                'themehashes'  => hashFoldersInDirectory($baseDir, 'wp-content/themes'),
+                'pluginhashes' => hashFoldersInDirectory($baseDir, 'wp-content/plugins')
           );
 
   foreach($data['plugins'] as $name => &$plugindata) {
@@ -368,6 +370,53 @@ function cloudseca_get_config(){
   return $config;
 }
 
+function getFolderHash($folderPath) {
+    $fileHashes = [];
+
+    $iterator = new RecursiveIteratorIterator(
+        new RecursiveDirectoryIterator($folderPath, FilesystemIterator::SKIP_DOTS)
+    );
+
+    foreach ($iterator as $file) {
+        if ($file->isFile()) {
+            $relativePath = str_replace('\\', '/', substr($file->getPathname(), strlen($folderPath)));
+            $contentHash = md5_file($file->getPathname());
+            $fileHashes[$relativePath] = $contentHash;
+        }
+    }
+
+    // Sort by path to ensure consistent order
+    ksort($fileHashes);
+
+    // Combine all file hashes into a single string
+    $combined = '';
+    foreach ($fileHashes as $path => $hash) {
+        $combined .= $path . ':' . $hash . "\n";
+    }
+
+    // Final folder-level hash
+    return md5($combined);
+}
+
+function hashFoldersInDirectory($baseDir, $subPath) {
+    $result = [];
+    $fullPath = rtrim($baseDir, '/') . '/' . trim($subPath, '/');
+
+    if (!is_dir($fullPath)) {
+        return $result;
+    }
+
+    foreach (scandir($fullPath) as $item) {
+        if ($item === '.' || $item === '..') continue;
+        $itemPath = $fullPath . '/' . $item;
+        if (is_dir($itemPath)) {
+            $relative = $subPath . '/' . $item;
+            $result[$relative] = getFolderHash($itemPath);
+        }
+    }
+
+    return $result;
+}
 
 
 ############################################################################
