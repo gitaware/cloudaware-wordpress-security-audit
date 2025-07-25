@@ -66,7 +66,7 @@ function cloudseca_make_data() {
                 'themes'  => array(),
                 'url'     => get_option( 'siteurl' ),
                 'time'    => time(),
-                'config'  => array()
+                'config'  => cloudseca_get_config()
           );
 
   foreach($data['plugins'] as $name => &$plugindata) {
