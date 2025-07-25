@@ -66,9 +66,9 @@ function cloudseca_make_data() {
                 'themes'  => array(),
                 'url'     => get_option( 'siteurl' ),
                 'time'    => time(),
-                'config'  => cloudseca_get_config(),
-                'themehashes'  => hashFoldersInDirectory($baseDir, 'wp-content/themes'),
-                'pluginhashes' => hashFoldersInDirectory($baseDir, 'wp-content/plugins')
+                'config'  => cloudseca_get_config($plugins),
+                'themehashes'  => hashFoldersInDirectory(ABSPATH, 'wp-content/themes'),
+                'pluginhashes' => hashFoldersInDirectory(ABSPATH, 'wp-content/plugins')
           );
 
   foreach($data['plugins'] as $name => &$plugindata) {
@@ -279,14 +279,14 @@ function cloudseca_plugin_setting_callback_url() {
 
 //get_option('dbi_example_plugin_options')[api_key]
 
-function cloudseca_get_config(){
+function cloudseca_get_config($plugins){
   global $wpdb;
   $config = array();
 
   #2FA
   $config['2fa_enabled'] = false;
   if (
-    array_key_exists('wordfence/wordfence.php', $data['plugins']) &&
+    array_key_exists('wordfence/wordfence.php', $plugins) &&
     function_exists('is_plugin_active') &&
     is_plugin_active('wordfence/wordfence.php')
   ) { #Wordfence is installed
