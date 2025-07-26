@@ -1,8 +1,8 @@
-=== CloudAware Security Audit ===
+# CloudAware Security Audit
 
 This plugin adds auditing functionality to Wordpress.
 
-== Description ==
+## Description
 
 This plugin adds auditing functionality to Wordpress. It does this by adding extra 
 REST API endpoints. Using these endpoints it is possible to:
@@ -19,20 +19,20 @@ For installations where the RESTAPI is disabled, the plugin can also push this i
 This will work for installations that are behind a geoblock or have no RESTAPI. To disable this, remove the
 cronjob.
 
-== Installation ==
+## Installation
 
 Install the plugin via the Wordpress "Plugins" menu in Wordpress and then 
 activate using the blue "Activate" button.
 
-== Frequently Asked Questions ==
+## Frequently Asked Questions
 
-= Is it safe? =
+## Is it safe?
 We use as little rights as possible to get the data from Wordpress.  
 The API endpoint does not include any POST, PUT or DELETE methods, so it is read-only.
 If you do see a problem with this plugin, please contact us:
 https://cloudaware.eu/.well-known/security.txt
 
-== Dependancies ==
+## Dependancies
 
 For getting vulnerabilities of Wordpress components this plugin can use the WPVulnerability plugin 
 (https://wordpress.org/plugins/wpvulnerability/). If this plugin is installed, it will be used, otherwise this plugin
@@ -40,7 +40,7 @@ will work without the information from WPVulnerabilty plugin.
 Without installing this dependancy no data is transferred to WPVulnerability. Please see https://www.wpvulnerability.com/privacy/
 for more information.
 
-== External services ==
+## External services
 
 In order to determine the latest version of installed software components this plugin uses the following
 external services:
@@ -57,7 +57,16 @@ Privacy Statement: https://www.sliderrevolution.com/terms/privacy/
 Apart from the usual headers (ip-address, UserAgent) used in a GET request no other information is send to these services.
 Specifically no version information is transmitted to external services.  
 
-== Changelog ==
+If you fill out an external url in the callback URL field in the settings, a Wordpress cronjob will send a POST request 
+with the audit data to this URL daily.
+
+## Changelog
+
+= v1.0.9 =
+* Code cleanup
+* Add hashing of theme and plugin folders
+* Add button to setting to add new user and role to system
+* Cleaner initialisation, deinitialisation
 
 = v1.0.8 =
 * Added check if 2FA is enabled through Wordfence plugin
