@@ -1,6 +1,6 @@
 === CloudAware Security Audit ===
 
-Contributors: cloudaware
+Contributors: cloudaware, underdarknl
 Tags: security, audit
 Requires at least: 6.0
 Tested up to: 6.8
