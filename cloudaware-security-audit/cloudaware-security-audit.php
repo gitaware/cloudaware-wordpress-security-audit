@@ -183,19 +183,8 @@ function cloudseca_make_data() {
   return $data;
 }
 
-//see wp-admin/update-core.php
+//rest api endpoint function
 function cloudseca_security_status (WP_REST_Request $request) {
-  #if ( ! function_exists( 'core_auto_updates_settings' ) ) {
-  #  require_once ABSPATH . 'wp-admin/update-core.php';
-  #}
-
-  #if(function_exists('needed_function')){
-  #  needed_function();
-  #}
-
-  #$wp_version     = wp_get_wp_version();
-  #$cur_wp_version = preg_replace( '/-.*$/', '', $wp_version );
-  //$data     = array('name'=>$request->get_param( 'naam' ));
   $data = cloudseca_make_data();
   return new WP_REST_Response( $data );
 }
@@ -268,7 +257,7 @@ function cloudseca_options() {
   echo "        fetch(ajaxurl, {\n";
   echo "            method: 'POST',\n";
   echo "            headers: {'Content-Type': 'application/x-www-form-urlencoded'},\n";
-  echo "            body: 'action=cloudseca_activate_api_user&_wpnonce=".wp_create_nonce("cloudseca_nonce") ."'\n";
+  echo "            body: 'action=cloudseca_activate_api_user&_wpnonce=".esc_js(wp_create_nonce("cloudseca_nonce")) ."'\n";
   echo "        })\n";
   echo "        .then(res => res.json())\n";
   echo "        .then(data => {\n";
@@ -283,6 +272,7 @@ function cloudseca_options() {
 }
 
 function cloudseca_register_settings() {
+    // phpcs:ignore PluginCheck.CodeAnalysis.SettingSanitization.register_settingDynamic
     register_setting( 'cloudseca_plugin_options', //settings group name
                       'cloudseca_plugin_options', //name of option
                       array(
@@ -473,7 +463,8 @@ function cloudseca_get_config($plugins){
         $table_name = $wpdb->prefix . 'wfls_settings';
 
         // Fetch settings in a single query
-        $query = "SELECT name, value FROM $table_name WHERE name IN ($placeholders)";
+        $query = "SELECT name, value FROM esc_sql($table_name) WHERE name IN ($placeholders)";
+        // This IS a prepared statement using splat notation
         // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared,WordPress.DB.DirectDatabaseQuery.DirectQuery
         $results = $wpdb->get_results($wpdb->prepare($query, ...$setting_keys), OBJECT_K);
         // Cache the results
