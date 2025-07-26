@@ -33,6 +33,8 @@ cronjob.
 
 Install the plugin via the Wordpress "Plugins" menu in Wordpress and then 
 activate using the blue "Activate" button.
+You can add a new user with restrictive role to your Wordpress installation from within the plugin settings page
+by clicking on a button.
 
 == Frequently Asked Questions ==
 
@@ -67,11 +69,16 @@ Privacy Statement: https://www.sliderrevolution.com/terms/privacy/
 Apart from the usual headers (ip-address, UserAgent) used in a GET request no other information is send to these services.
 Specifically no version information is transmitted to external services.  
 
+If you fill out an external url in the callback URL field in the settings, a Wordpress cronjob will send a POST request 
+with the audit data to this URL daily.
+
 == Changelog ==
 
 = v1.0.9 =
 * Code cleanup
 * Add hashing of theme and plugin folders
+* Add button to setting to add new user and role to system
+* Cleaner initialisation, deinitialisation
 
 = v1.0.8 =
 * Added check if 2FA is enabled through Wordfence plugin

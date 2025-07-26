@@ -121,12 +121,12 @@ function cloudseca_make_data() {
 
       $plugindata['version_latest']      = $matches[0][1];
       $plugindata['version_latest_date'] = date_parse($matches[0][2]);
-      $plugindata['version_latest_date'] = $plugindata['version_latest_date']['year'].'-'.$plugindata['version_latest_date']['month'].'-'.$plugindata['Version_latest_date']['day'];
+      $plugindata['version_latest_date'] = $plugindata['Version_latest_date']['year'].'-'.$plugindata['Version_latest_date']['month'].'-'.$plugindata['Version_latest_date']['day'];
     } else {
       if( array_key_exists($name, $plugin_updates) ) {
         $plugindata['version_latest'] = $plugin_updates[$name]->update->new_version;
       } else {
-        $plugindata['version_latest'] = $plugindata['version'];
+        $plugindata['version_latest'] = $plugindata['Version'];
       }
     }
   }
@@ -231,8 +231,55 @@ function cloudseca_options() {
   echo "<form action=\"".esc_url("options.php")."\" method=\"post\">\n";
   settings_fields( 'cloudseca_plugin_options' );
   do_settings_sections( 'cloudseca_plugin' );
-  echo "<input name=\"submit\" class=\"button button-primary\" type=\"submit\" value=\"". esc_attr( 'Save' ). "\" />\n";
+  #echo "<input name=\"submit\" class=\"button button-primary\" type=\"submit\" value=\"". esc_attr( 'Save' ). "\" />\n";
+  submit_button('Save Settings');
   echo "</form>\n";
+
+  echo "<button id=\"cloudseca_activate_btn\" class=\"button button-secondary\">Create role and user</button>\n";
+  echo "<div id=\"cloudseca_modal\" style=\"display:none;\">\n";
+  echo "  <p><span class=\"dashicons dashicons-warning\" style=\"color: #d63638; font-size: 18px; vertical-align: middle; margin-right: 6px;\"></span>\n";
+  echo "  A new user <strong>cloudaware</strong> will be created with minimal access (role <code>cloudseca_api</code>).<br>\n";
+  echo "  If a cloudaware.eu callback url has been defined, a secure application password will be generated and sent to CloudAware’s secure callback URL for monitoring. If the callback url is not in the cloudaware.eu domain, it will be shown to you once and not send anywhere else.</p>\n";
+  echo "  <button id=\"cloudseca_confirm_btn\" class=\"button button-primary\" style=\"background-color: #28a745; border-color: #28a745;\">Confirm</button>\n";
+  echo "  <button id=\"cloudseca_cancel_btn\" class=\"button\" style=\"background-color: #dc3545; border-color: #dc3545; color: white;\">Cancel</button>\n";
+  echo "</div>\n";
+  echo "<div id=\"cloudseca_response\"></div>\n";
+
+  echo "<script>\n";
+  echo "document.addEventListener('DOMContentLoaded', function () {\n";
+  echo "    const activateBtn = document.getElementById('cloudseca_activate_btn');\n";
+  echo "    const modal = document.getElementById('cloudseca_modal');\n";
+  echo "    const confirmBtn = document.getElementById('cloudseca_confirm_btn');\n";
+  echo "    const cancelBtn = document.getElementById('cloudseca_cancel_btn');\n";
+  echo "    const response = document.getElementById('cloudseca_response');\n\n";
+
+  echo "    activateBtn.addEventListener('click', function(e) {\n";
+  echo "        e.preventDefault();\n";
+  echo "        modal.style.display = 'block';\n";
+  echo "    });\n\n";
+
+  echo "    cancelBtn.addEventListener('click', function() {\n";
+  echo "        modal.style.display = 'none';\n";
+  echo "    });\n\n";
+
+  echo "    confirmBtn.addEventListener('click', function() {\n";
+  echo "        modal.style.display = 'none';\n";
+  echo "        response.innerHTML = 'Activating...';\n";
+  echo "        fetch(ajaxurl, {\n";
+  echo "            method: 'POST',\n";
+  echo "            headers: {'Content-Type': 'application/x-www-form-urlencoded'},\n";
+  echo "            body: 'action=cloudseca_activate_api_user&_wpnonce=".wp_create_nonce("cloudseca_nonce") ."'\n";
+  echo "        })\n";
+  echo "        .then(res => res.json())\n";
+  echo "        .then(data => {\n";
+  echo "            response.innerHTML = data.success ? '<strong>Success:</strong> ' + data.data.message : '<strong>Error:</strong> ' + data.data.message;\n";
+  echo "        })\n";
+  echo "        .catch(err => {\n";
+  echo "            response.innerHTML = '<strong>Error:</strong> Could not connect.';\n";
+  echo "        });\n";
+  echo "    });\n";
+  echo "});\n";
+  echo "</script>\n";
 }
 
 function cloudseca_register_settings() {
@@ -256,7 +303,7 @@ function cloudseca_register_settings() {
                       );
 }
 add_action( 'admin_init', 'cloudseca_register_settings' );
-
+add_action('wp_ajax_cloudseca_activate_api_user', 'cloudseca_handle_api_user_creation');
 
 function cloudseca_plugin_options_validate( $input ) {
     $newinput['callback_url'] = trim( $input['callback_url'] );
@@ -278,6 +325,113 @@ function cloudseca_plugin_setting_callback_url() {
 }
 
 //get_option('dbi_example_plugin_options')[api_key]
+
+function cloudseca_handle_api_user_creation() {
+    check_ajax_referer('cloudseca_nonce');
+
+    $role_name  = 'cloudseca_api';
+    $role_label = 'Cloudseca API';
+    $username   = 'cloudaware';
+    $email      = 'wordpresssecurity@cloudaware.eu';
+    // The exact permissions this role should have
+    $desired_perms = [
+        'activate_plugins'        => true,
+        'list_users'              => true,
+        'read'                    => true,
+        'switch_themes'           => true,
+        'view_site_health_checks' => true,
+    ];
+
+    // 1. Create role if needed
+    $roles = wp_roles();
+    if (!$roles->is_role($role_name)) {
+        // Role does not exist — create it
+        add_role($role_name, $role_label, $desired_perms);
+    } else {
+        // Role exists — ensure it has only the desired capabilities
+        $role = get_role($role_name);
+        if ($role) {
+            // First, remove all existing caps
+            foreach ($role->capabilities as $cap => $value) {
+                $role->remove_cap($cap);
+            }
+
+            // Then, add the desired capabilities
+            foreach ($desired_perms as $perm => $value) {
+                $role->add_cap($perm, $value);
+            }
+        }
+    }
+
+    // 2. Create user if needed
+    $user_id = username_exists($username);
+    if (!$user_id && !email_exists($email)) {
+        $password = wp_generate_password(24, true);
+        $user_id = wp_create_user($username, $password, $email);
+        if (is_wp_error($user_id)) {
+            wp_send_json_error(['message' => 'Failed to create user.']);
+        }
+        $user = get_user_by('id', $user_id);
+        $user->set_role($role_name);
+    } else {
+        // User exists — check and update role if necessary
+        $user = get_user_by('id', $user_id);
+        if ($user && $user->role !== $role_name) {
+            $user->set_role($role_name);
+        }
+    }
+
+    if (!$user_id) {
+        wp_send_json_error(['message' => 'User exists but could not retrieve ID.']);
+    }
+
+    // 3. Create application password
+    if (!class_exists('WP_Application_Passwords')) {
+        require_once ABSPATH . 'wp-includes/class-wp-application-passwords.php';
+    }
+
+    $app_exists = WP_Application_Passwords::application_name_exists_for_user($user_id, 'cloudaware');
+    if (!$app_exists) {
+        $app_pass = WP_Application_Passwords::create_new_application_password($user_id, ['name' => 'cloudaware']);
+        if (is_wp_error($app_pass)) {
+            wp_send_json_error(['message' => 'Failed to create application password.']);
+        }
+
+        // 4. Send app pass to callback URL
+        $options = get_option('cloudseca_plugin_options');
+        #$callback = get_option('cloudseca_plugin_options')['callback_url'];
+        $callback = isset($options['callback_url']) ? trim($options['callback_url']) : '';
+        #if (!$callback || !filter_var($callback, FILTER_VALIDATE_URL)) {
+        #    wp_send_json_error(['message' => 'Invalid or missing callback URL.']);
+        #}
+
+        if ($callback && stripos($callback, 'cloudaware.eu') !== false && filter_var($callback, FILTER_VALIDATE_URL)) {
+          $send = wp_remote_post($callback, [
+              'headers' => ['Content-Type' => 'application/json; charset=utf-8'],
+              'body' => json_encode([
+                  'app_pass' => $app_pass[0],
+                  'url'      => get_option('siteurl'),
+              ]),
+              'method'      => 'POST',
+              'data_format' => 'body',
+              'timeout'     => 10,
+          ]);
+
+          $code = wp_remote_retrieve_response_code($send);
+          if ($code >= 200 && $code < 300) {
+              wp_send_json_success(['message' => 'API user created and app password sent to CloudAware.']);
+          } else {
+              wp_send_json_error(['message' => 'App password created but failed to notify CloudAware.']);
+          }
+        } else {
+            // Show password to user
+            wp_send_json_success([
+                'message' => 'API user created. Please copy the application password now — it will not be shown again: <code>'.$app_pass[0].'</code>'
+            ]);        }
+    } else {
+        wp_send_json_success(['message' => 'Application password already exists.']);
+    }
+}
 
 function cloudseca_get_config($plugins){
   global $wpdb;
@@ -423,61 +577,6 @@ function hashFoldersInDirectory($baseDir, $subPath) {
 ####### Cron job
 ####### https://blazzdev.com/scheduled-tasks-cron-wordpress-plugin-boilerplate/
 ############################################################################
-
-#####Initialise
-register_activation_hook( __FILE__, 'cloudseca_activate_plugin' );
-function cloudseca_activate_plugin() { // runs on plugin activation
-  #require_once( ABSPATH . 'wp-admin/includes/user.php' );  //wp_create_user()
-  #require_once( ABSPATH . 'wp-includes/pluggable.php' ); //get_user_by()
-  #require_once( ABSPATH . 'wp-includes/capabilities.php' ); //add_role()
-  #require_once( ABSPATH . 'wp-includes/class-wp-application-passwords.php' );
-
-  if ( get_option( 'cloudseca_plugin_options' )                 === false ||
-       get_option( 'cloudseca_plugin_options' )['callback_url'] === false ||
-       get_option( 'cloudseca_plugin_options' )['callback_url'] ==  ''
-  ) {
-    #add_option( 'cloudseca_plugin_options', array('callback_url' => 'https://app.cloudaware.eu/callbacks') );
-    add_option( 'cloudseca_plugin_options', array('callback_url' => '') );
-  }
-  if ( ! wp_next_scheduled( 'cloudseca_cron_security_check' ) ) {
-    wp_schedule_event( time(), 'daily', 'cloudseca_cron_security_check' ); // cloudseca_cron_security_check is a hook
-  }
-
-  #if ( ! wp_roles()->is_role( 'cloudseca_api' ) ) {
-  #  add_role('cloudseca_api', 'cloudseca_api', array(
-  #    'activate_plugins' => true,
-  #    'list_users' => true,
-  #    'read' => true,
-  #    'switch_themes' => true,
-  #    'view_site_health_checks' => true,
-  #  ));
-  #}
-  #$username = 'cloudaware';
-  #$email    = 'wordpresssecurity@cloudaware.eu';
-  #$password = wp_generate_password(32, true);
-
-  #$user_id = username_exists( $username );
-  #if ( !$user_id && email_exists($email) == false ) {
-  #  $user_id = wp_create_user( $username, $password, $email );
-  #  if( !is_wp_error($user_id) ) {
-  #      $user = get_user_by( 'id', $user_id );
-  #      $user->set_role( 'cloudseca_api' );
-  #  }
-  #}
-  #Future use from configuration page to send an app password to cloudaware as a sort of activation
-  #This will always be with consent of the admin
-  #$app_exists = WP_Application_Passwords::application_name_exists_for_user( $user_id, 'cloudaware' );
-  #if ( ! $app_exists ) {
-  #  $app_pass = WP_Application_Passwords::create_new_application_password( $user_id, array( 'name' => 'cloudaware' ) );
-  #  $res = wp_remote_post(get_option('cloudseca_plugin_options')['callback_url'], array(
-  #      'headers'     => array('Content-Type' => 'application/json; charset=utf-8'),
-  #      'body'        => json_encode(array('app_pass' => $app_pass, 'url' => get_option( 'siteurl' ))),
-  #      'method'      => 'POST',
-  #      'data_format' => 'body',
-  #  ));
-  #}
-};
-
 add_action( 'cloudseca_cron_security_check', 'cloudseca_plugin_cron_daily' );
 function cloudseca_plugin_cron_daily() {
   #only runs if user explicitly set a callback URL, will never run without user interaction
@@ -491,20 +590,43 @@ function cloudseca_plugin_cron_daily() {
   }
 }
 
+#####Initialise
+register_activation_hook( __FILE__, 'cloudseca_activate_plugin' );
+function cloudseca_activate_plugin() { // runs on plugin activation
+  if ( get_option( 'cloudseca_plugin_options' )                 === false ||
+       get_option( 'cloudseca_plugin_options' )['callback_url'] === false ||
+       get_option( 'cloudseca_plugin_options' )['callback_url'] ==  ''
+  ) {
+    add_option( 'cloudseca_plugin_options', array('callback_url' => '') );
+  }
+};
+
+add_action('init', 'cloudseca_init_plugin');
+function cloudseca_init_plugin() {
+  if ( ! wp_next_scheduled( 'cloudseca_cron_security_check' ) ) {
+    wp_schedule_event( time(), 'daily', 'cloudseca_cron_security_check' ); // cloudseca_cron_security_check is a hook
+  }
+}
 
 #Deinitialise
 register_deactivation_hook( __FILE__, 'cloudseca_deactivate_plugin' ); 
 function cloudseca_deactivate_plugin() {
-  #require_once( ABSPATH . 'wp-admin/includes/user.php' );  //wp_delete_user()
-  #require_once( ABSPATH . 'wp-includes/pluggable.php' ); //get_user_by()
-  #require_once( ABSPATH . 'wp-includes/capabilities.php' ); //remove_role()
-
   $timestamp = wp_next_scheduled( 'cloudseca_cron_security_check' );
   wp_unschedule_event( $timestamp, 'cloudseca_cron_security_check' );
+}
 
-  delete_option('cloudseca_plugin_options');
+//Deinstall
+register_uninstall_hook(__FILE__, 'cloudseca_plugin_uninstall');
+function cloudseca_plugin_uninstall() {
+    // Delete user
+    $user = get_user_by('login', 'cloudaware');
+    if ($user) {
+        wp_delete_user($user->ID);
+    }
 
-  #$user = get_user_by( 'login', 'cloudaware' );
-  #wp_delete_user( $user->ID );
-  #remove_role( 'cloudseca_api' );
+    // Remove custom role
+    remove_role('cloudseca_api');
+
+    // Delete plugin options
+    delete_option('cloudseca_plugin_options');
 }
