@@ -3,7 +3,7 @@
 Plugin Name:  CloudAware Security Audit
 Plugin URI:   https://www.cloudaware.eu
 Description:  Plugin to monitor and audit security aspects of your Wordpress installation
-Version:      1.0.9
+Version:      1.0.10
 Author:       Jeroen Hermans
 License:      GPLv2
 Text Domain:  cloudaware-security-audit
@@ -60,16 +60,22 @@ function cloudseca_make_data() {
     $wpvulnerabilities = wpvulnerability_plugin_get_vulnerabilities();
   }
 
+
+  if ( ! function_exists( 'wp_check_php_version' ) ) {
+    require_once ABSPATH . 'wp-admin/includes/misc.php';
+  }
   $data = array('global_autoupdates' => array('themes' => $global_theme_autoupdate, 'plugins' => $global_plugin_autoupdate),
                 'core'    => $core_updates,
                 'plugins' => $plugins,
                 'themes'  => array(),
                 'url'     => get_option( 'siteurl' ),
                 'time'    => time(),
+                'php'     => wp_check_php_version()+array('version'=>PHP_VERSION),
                 'config'  => cloudseca_get_config($plugins),
                 'themehashes'  => hashFoldersInDirectory(ABSPATH, 'wp-content/themes'),
                 'pluginhashes' => hashFoldersInDirectory(ABSPATH, 'wp-content/plugins')
           );
+  $data['core']['php_version'] = $data['php']['version']; //Fix for Wordpress incorrect version
 
   foreach($data['plugins'] as $name => &$plugindata) {
     if( in_array($name, $auto_update_plugins) ) {
@@ -229,8 +235,8 @@ function cloudseca_options() {
   echo "  <p><span class=\"dashicons dashicons-warning\" style=\"color: #d63638; font-size: 18px; vertical-align: middle; margin-right: 6px;\"></span>\n";
   echo "  A new user <strong>cloudaware</strong> will be created with minimal access (role <code>cloudseca_api</code>).<br>\n";
   echo "  If a cloudaware.eu callback url has been defined, a secure application password will be generated and sent to CloudAware’s secure callback URL for monitoring. If the callback url is not in the cloudaware.eu domain, it will be shown to you once and not send anywhere else.</p>\n";
-  echo "  <button id=\"cloudseca_confirm_btn\" class=\"button button-primary\" style=\"background-color: #28a745; border-color: #28a745;\">Confirm</button>\n";
-  echo "  <button id=\"cloudseca_cancel_btn\" class=\"button\" style=\"background-color: #dc3545; border-color: #dc3545; color: white;\">Cancel</button>\n";
+  echo "  <button id=\"cloudseca_confirm_btn\" class=\"button button-primary\">Confirm</button>\n";
+  echo "  <button id=\"cloudseca_cancel_btn\" class=\"button\">Cancel</button>\n";
   echo "</div>\n";
   echo "<div id=\"cloudseca_response\"></div>\n";
 
@@ -268,6 +274,20 @@ function cloudseca_options() {
   echo "        });\n";
   echo "    });\n";
   echo "});\n";
+
+  echo "function cloudsecaCopyPassword() {\n";
+  echo "    const el = document.getElementById('cloudseca_app_password');\n";
+  echo "    const text = el.textContent || el.innerText;\n\n";
+  echo "    navigator.clipboard.writeText(text).then(() => {\n";
+  echo "        const feedback = document.getElementById('cloudseca_copy_feedback');\n";
+  echo "        feedback.style.display = 'inline';\n\n";
+  echo "        setTimeout(() => {\n";
+  echo "            feedback.style.display = 'none';\n";
+  echo "        }, 2000);\n";
+  echo "    }).catch(err => {\n";
+  echo "        console.error('Copy failed', err);\n";
+  echo "    });\n";
+  echo "}\n";
   echo "</script>\n";
 }
 
@@ -416,8 +436,9 @@ function cloudseca_handle_api_user_creation() {
         } else {
             // Show password to user
             wp_send_json_success([
-                'message' => 'API user created. Please copy the application password now — it will not be shown again: <code>'.$app_pass[0].'</code>'
-            ]);        }
+                'message' => '<div style="display: flex; align-items: center; gap: 8px;"> API user created. Please copy the application password now — it will not be shown again: <code id="cloudseca_app_password">'.implode(' ', str_split($app_pass[0], 4)).'</code>  <span id="cloudseca_copy_icon" style="cursor: pointer;" title="Copy password" onclick="cloudsecaCopyPassword()">📋</span>  <span id="cloudseca_copy_feedback" style="display: none; color: green; font-weight: bold;">Copied!</span></div>'
+            ]);
+        }
     } else {
         wp_send_json_success(['message' => 'Application password already exists.']);
     }
@@ -492,19 +513,49 @@ function cloudseca_get_config($plugins){
   }
 
   #Configuration 
-  $config['admin_user_found'] = username_exists( 'admin' );
+  $config['admin_user_found']   = username_exists( 'admin' );
   $config['disallow_file_edit'] = defined('DISALLOW_FILE_EDIT');
-  $config['debug'] = (defined('WP_DEBUG') && WP_DEBUG);
-  $config['debug_log'] = (defined('WP_DEBUG_LOG') && WP_DEBUG_LOG);
-  $config['debug_display'] = defined('WP_DEBUG_DISPLAY') && WP_DEBUG_DISPLAY;
-  $config['script_debug'] = defined('SCRIPT_DEBUG') && SCRIPT_DEBUG;
-  $config['home_https'] = (defined('WP_HOME') && strpos(WP_HOME, 'https://') === 0) ;
-  $config['siteurl_https'] = (defined('WP_SITEURL') && strpos(WP_SITEURL, 'https://') === 0);
-  $config['force_ssl_admin'] = (defined('FORCE_SSL_ADMIN') && strpos(FORCE_SSL_ADMIN, 'https://') === 0);
-  $config['autosave_interval'] = defined('AUTOSAVE_INTERVAL')?AUTOSAVE_INTERVAL:null;
-  $config['post_revisions'] = defined('WP_POST_REVISIONS')?WP_POST_REVISIONS:null;
-  $config['empty_trash_days'] = defined('EMPTY_TRASH_DAYS')?EMPTY_TRASH_DAYS:null;
-  $config['memory_limit'] = defined('WP_MEMORY_LIMIT')?WP_MEMORY_LIMIT:null;
+  $config['debug']              = (defined('WP_DEBUG') && WP_DEBUG);
+  $config['debug_log']          = (defined('WP_DEBUG_LOG') && WP_DEBUG_LOG);
+  $config['debug_display']      = defined('WP_DEBUG_DISPLAY') && WP_DEBUG_DISPLAY;
+  $config['script_debug']       = defined('SCRIPT_DEBUG') && SCRIPT_DEBUG;
+  $config['home_https']         = (defined('WP_HOME') && strpos(WP_HOME, 'https://') === 0) ;
+  $config['siteurl_https']      = (defined('WP_SITEURL') && strpos(WP_SITEURL, 'https://') === 0);
+  $config['force_ssl_admin']    = (defined('FORCE_SSL_ADMIN') && strpos(FORCE_SSL_ADMIN, 'https://') === 0);
+  $config['autosave_interval']  = defined('AUTOSAVE_INTERVAL')?AUTOSAVE_INTERVAL:null;
+  $config['post_revisions']     = defined('WP_POST_REVISIONS')?WP_POST_REVISIONS:null;
+  $config['empty_trash_days']   = defined('EMPTY_TRASH_DAYS')?EMPTY_TRASH_DAYS:null;
+  $config['memory_limit']       = defined('WP_MEMORY_LIMIT')?WP_MEMORY_LIMIT:null;
+  $config['timezone_correct']   = ( 'UTC' == date_default_timezone_get() );
+
+  //include some tests from site-health
+  if ( ! class_exists( 'WP_Site_Health' ) ) {
+      require_once ABSPATH . 'wp-admin/includes/class-wp-site-health.php';
+  }
+  $site_health = new WP_Site_Health();
+
+  $config['sql_server'] = cloudseca_get_db_info($site_health);
+  
+  $config['cron'] = array(
+          "missed_cron" => $site_health->has_missed_cron(),
+          "late_cron"   => $site_health->has_late_cron(),
+  );
+
+  if ( ! function_exists( 'ini_get' ) ) {
+    $config['file_uploads'] = !empty( ini_get( 'file_uploads' ) );
+  }
+
+
+  if ( function_exists( 'disk_free_space' ) ) {
+    $config['diskspace']['free'] = intval( @disk_free_space( WP_CONTENT_DIR ) / MB_IN_BYTES );
+		if ( $config['diskspace']['free'] < 20 ) {
+		  $config['diskspace']['status'] = 'critical';
+		} elseif ( $config['diskspace']['free'] < 100 ) {
+		  $config['diskspace']['status']       = 'low';
+		} else {
+		  $config['diskspace']['status']       = 'ok';
+		}
+  }
 
   $url = rtrim(get_option( 'siteurl' ), "/");
   $url .= '/xmlrpc.php';
@@ -513,6 +564,39 @@ function cloudseca_get_config($plugins){
   $config['table_prefix'] = $wpdb->prefix;
 
   return $config;
+}
+
+function cloudseca_get_db_info($site_health) {
+    global $wpdb;
+    $sql_server  = $site_health->get_test_sql_server();
+
+    $db_info = array(
+          "status"  => $sql_server['status'],
+          "label"   => $sql_server['label'],
+          "type"    => stripos( $server_info, 'mariadb' ) !== false ? 'mariadb' : 'mysql',
+          "version" => $wpdb->db_version(),
+    );
+
+    $file = ABSPATH . 'wp-admin/includes/class-wp-site-health.php';
+
+    if ( file_exists( $file ) ) {
+      $contents = file_get_contents( $file );
+
+      $keys = [
+          'mysql_required_version',
+          'mysql_recommended_version',
+          'mariadb_recommended_version',
+      ];
+
+      foreach ( $keys as $key ) {
+          $re = '/^\s*private\s+\$'.$key.'\s*=\s*\'([^\']+)\'/m';
+          if ( preg_match( $re, $contents, $matches ) ) {
+              $db_info[ $key ] = $matches[1];
+          }
+      }
+    }
+
+    return $db_info;
 }
 
 function getFolderHash($folderPath) {
