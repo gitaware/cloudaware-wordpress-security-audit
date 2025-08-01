@@ -145,7 +145,7 @@ function cloudseca_make_data() {
     $themedetails                     = wp_get_theme($name);
     $data['themes'][$name]['Update']  = $themedata->update;
     $data['themes'][$name]['Name']    = $themedetails->get('Name');
-    $data['themes'][$name]['version'] = $themedetails->get('version');
+    $data['themes'][$name]['version'] = $themedetails->get('Version');
 
     if( array_key_exists($name, $theme_updates) ) {
       $data['themes'][$name]['version_latest'] = $theme_updates[$name]->update['new_version'];
@@ -346,6 +346,7 @@ function cloudseca_handle_api_user_creation() {
     // The exact permissions this role should have
     $desired_perms = [
         'activate_plugins'        => true,
+        'edit_others_posts'       => true, //needed for list_users
         'list_users'              => true,
         'read'                    => true,
         'switch_themes'           => true,
