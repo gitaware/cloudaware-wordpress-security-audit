@@ -62,6 +62,9 @@ with the audit data to this URL daily.
 
 ## Changelog
 
+= v1.0.12 =
+* Format latest PHP version properly
+
 = v1.0.11 =
 * fix for php test
 
