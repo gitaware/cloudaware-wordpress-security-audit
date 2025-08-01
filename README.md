@@ -62,6 +62,16 @@ with the audit data to this URL daily.
 
 ## Changelog
 
+= v1.0.11 =
+* fix for php test
+
+= v1.0.10 =
+* SQL server version check
+* disk space check
+* cron information
+* file uploads enabled in PHP config?
+* timezone check
+
 = v1.0.9 =
 * Code cleanup
 * Add hashing of theme and plugin folders

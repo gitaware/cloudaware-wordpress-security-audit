@@ -3,7 +3,7 @@
 Plugin Name:  CloudAware Security Audit
 Plugin URI:   https://www.cloudaware.eu
 Description:  Plugin to monitor and audit security aspects of your Wordpress installation
-Version:      1.0.10
+Version:      1.0.11
 Author:       Jeroen Hermans
 License:      GPLv2
 Text Domain:  cloudaware-security-audit
@@ -186,6 +186,14 @@ function cloudseca_make_data() {
   $obj  = json_decode($json, true);
   $data['curl']['version_latest'] = $obj[0]['name'];
 
+  if( array_key_exists('php', $data) ) {
+    $url  = 'https://api.github.com/repos/php/php-src/releases';
+    $res = wp_remote_get($url, REQUESTHEADERS);
+    $json = wp_remote_retrieve_body($res);
+
+    $obj  = json_decode($json, true);
+    $data['php']['version_latest'] = $obj[0]['name'];
+  }
   return $data;
 }
 
