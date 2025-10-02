@@ -32,12 +32,12 @@ The API endpoint does not include any POST, PUT or DELETE methods, so it is read
 If you do see a problem with this plugin, please contact us:
 https://cloudaware.eu/.well-known/security.txt
 
-## Dependancies
+## Dependencies
 
 For getting vulnerabilities of Wordpress components this plugin can use the WPVulnerability plugin 
 (https://wordpress.org/plugins/wpvulnerability/). If this plugin is installed, it will be used, otherwise this plugin
 will work without the information from WPVulnerabilty plugin.  
-Without installing this dependancy no data is transferred to WPVulnerability. Please see https://www.wpvulnerability.com/privacy/
+Without installing this dependency no data is transferred to WPVulnerability. Please see https://www.wpvulnerability.com/privacy/
 for more information.
 
 ## External services
@@ -95,7 +95,7 @@ with the audit data to this URL daily.
 * Added new role for use in API (no more external plugin needed)
 
 = v1.0.4 =
-* Removed curl dependancy
+* Removed curl dependency
 * Better error handling
 
 = v1.0.0 =
