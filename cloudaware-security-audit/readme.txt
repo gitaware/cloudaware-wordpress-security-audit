@@ -3,8 +3,8 @@
 Contributors: cloudaware, underdarknl
 Tags: security, audit
 Requires at least: 6.0
-Tested up to: 6.8
-Stable tag: 1.0.12
+Tested up to: 7.0
+Stable tag: 1.0.13
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -73,6 +73,9 @@ If you fill out an external url in the callback URL field in the settings, a Wor
 with the audit data to this URL daily.
 
 == Changelog ==
+
+= v1.0.13 =
+* Make plugin Wordpress 7 compatible
 
 = v1.0.12 =
 * Format latest PHP version properly

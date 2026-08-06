@@ -62,6 +62,9 @@ with the audit data to this URL daily.
 
 ## Changelog
 
+= v1.0.13 =
+* Make plugin Wordpress 7 compatible
+
 = v1.0.12 =
 * Format latest PHP version properly
 
